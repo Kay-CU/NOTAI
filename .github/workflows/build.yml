@@ -22,9 +22,10 @@ jobs:
       run: |
         pip install buildozer cython==0.29.36
         sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends \
-          autoconf libtool pkg-config libncurses5-dev libncursesw5-dev \
-          libtinfo5 cmake libffi-dev libssl-dev \
+         sudo apt-get install -y --no-install-recommends \
+          autoconf libtool pkg-config \
+          libncurses-dev \
+          cmake libffi-dev libssl-dev \
           openjdk-17-jdk
         sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
