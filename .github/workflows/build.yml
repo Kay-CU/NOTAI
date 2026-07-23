@@ -31,29 +31,33 @@ jobs:
     
     - name: Pre-install Android SDK (Java 17 compatible)
       run: |
-        # 新版 commandline-tools 支持 Java 17
-        # buildozer 只认 tools/bin/sdkmanager，所以解压后重命名为 tools
         SDK_DIR=/home/runner/.buildozer/android/platform/android-sdk
-        mkdir -p $SDK_DIR
+        # 清除可能存在的旧版 SDK（避免缓存干扰）
+        rm -rf $SDK_DIR
+        mkdir -p $SDK_DIR/cmdline-tools
+        # 下载新版 commandline-tools（支持 Java 17）
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
-        unzip -q /tmp/cmdline-tools.zip -d /tmp/
-        mv /tmp/cmdline-tools $SDK_DIR/tools
+        unzip -q /tmp/cmdline-tools.zip -d $SDK_DIR/cmdline-tools
+        # 重命名为 latest（新版 sdkmanager 要求的目录结构）
+        mv $SDK_DIR/cmdline-tools/cmdline-tools $SDK_DIR/cmdline-tools/latest
+        # 创建符号链接，让 buildozer 在 tools/bin/ 下也能找到 sdkmanager
+        ln -sf $SDK_DIR/cmdline-tools/latest $SDK_DIR/tools
         # 预创建 licenses
         mkdir -p $SDK_DIR/licenses
         printf "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > $SDK_DIR/licenses/android-sdk-license
         printf "84831b9409646a918e30573bab4c9c91346d8abd\n" > $SDK_DIR/licenses/android-sdk-preview-license
-        # 预装 build-tools 和 platform-tools，避免 buildozer 运行时安装卡住
+        # 预装 build-tools 和 platform-tools
         export ANDROID_HOME=$SDK_DIR
         export ANDROID_SDK_ROOT=$SDK_DIR
-        yes | $SDK_DIR/tools/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-        $SDK_DIR/tools/bin/sdkmanager "build-tools;34.0.0" "platform-tools" "platforms;android-33" > /tmp/sdk_install.log 2>&1 || true
-        echo "=== sdkmanager install log ==="
-        tail -20 /tmp/sdk_install.log || true
+        $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --sdk_root=$SDK_DIR "build-tools;34.0.0" "platform-tools" "platforms;android-33"
         # 验证
+        echo "=== SDK structure ==="
+        ls -la $SDK_DIR/
+        echo "=== tools/bin/sdkmanager ==="
         ls -la $SDK_DIR/tools/bin/sdkmanager
         $SDK_DIR/tools/bin/sdkmanager --version
-        echo "SDK installed at $SDK_DIR"
-        ls -la $SDK_DIR/build-tools/ 2>/dev/null || true
+        echo "=== build-tools ==="
+        ls -la $SDK_DIR/build-tools/
     
     - name: Cache Buildozer
       uses: actions/cache@v4
@@ -61,9 +65,9 @@ jobs:
         path: |
           ~/.buildozer
           .buildozer
-        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-buildozer-v2-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-
+          ${{ runner.os }}-buildozer-v2-
     
     - name: Build APK
       run: |
