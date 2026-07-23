@@ -22,7 +22,7 @@ jobs:
       run: |
         pip install buildozer cython==0.29.36
         sudo apt-get update -qq
-         sudo apt-get install -y --no-install-recommends \
+        sudo apt-get install -y --no-install-recommends \
           autoconf libtool pkg-config \
           libncurses-dev \
           cmake libffi-dev libssl-dev \
