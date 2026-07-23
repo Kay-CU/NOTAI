@@ -29,31 +29,19 @@ jobs:
           autoconf libtool pkg-config \
           libncurses-dev \
           cmake libffi-dev libssl-dev \
-          openjdk-17-jdk
+          openjdk-17-jdk unzip wget
         sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
     
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        packages: 'platform-tools build-tools;34.0.0 platforms;android-33'
-    
-    - name: Link Android SDK to buildozer expected path
+    - name: Pre-create license files for buildozer SDK
       run: |
-        # buildozer 期望 SDK 在 ~/.buildozer/android/platform/android-sdk
-        # 并且需要 tools/bin/sdkmanager 结构
-        BZ_SDK=/home/runner/.buildozer/android/platform/android-sdk
-        mkdir -p /home/runner/.buildozer/android/platform
-        # 把 setup-android 安装的 SDK 链接过去
-        ln -sf $ANDROID_HOME $BZ_SDK
-        # 创建 buildozer 期望的 tools/bin/sdkmanager（指向 cmdline-tools）
-        mkdir -p $BZ_SDK/tools/bin
-        ln -sf $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager $BZ_SDK/tools/bin/sdkmanager
-        ln -sf $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager $BZ_SDK/tools/bin/avdmanager
-        # 复制许可证文件
-        cp -r $ANDROID_HOME/licenses $BZ_SDK/ 2>/dev/null || true
-        echo "SDK linked. Verifying:"
-        ls -la $BZ_SDK/tools/bin/sdkmanager
-        $BZ_SDK/tools/bin/sdkmanager --version
+        # buildozer 会把 SDK 下载到 ~/.buildozer/android/platform/android-sdk
+        # 预先创建许可证文件，这样 sdkmanager 安装 build-tools 时不会询问
+        SDK_DIR=/home/runner/.buildozer/android/platform/android-sdk
+        mkdir -p $SDK_DIR/licenses
+        printf "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > $SDK_DIR/licenses/android-sdk-license
+        printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n" > $SDK_DIR/licenses/android-sdk-preview-license
+        echo "License files created in $SDK_DIR/licenses/"
+        ls -la $SDK_DIR/licenses/
     
     - name: Cache Buildozer
       uses: actions/cache@v4
@@ -69,7 +57,7 @@ jobs:
       run: |
         export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
         export PATH=$JAVA_HOME/bin:$PATH
-        buildozer android debug
+        buildozer android debug 2>&1 | tail -100
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
