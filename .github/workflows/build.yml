@@ -13,13 +13,58 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
     
-    - name: Build APK with Docker
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
       run: |
-        docker run --rm -v "$(pwd)":/home/user/hostcwd kivy/buildozer:stable /bin/bash -c "
-          cd /home/user/hostcwd && \
-          yes | /usr/local/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true && \
-          buildozer android debug
-        " 2>&1 | tee buildozer.log
+        pip install buildozer==1.5.0 cython==0.29.36
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+          autoconf libtool pkg-config \
+          libncurses-dev \
+          cmake libffi-dev libssl-dev \
+          openjdk-17-jdk unzip wget
+        sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
+    
+    - name: Pre-install old Android SDK tools
+      run: |
+        # buildozer 只认旧版 tools_r25.2.3 的结构（tools/bin/sdkmanager）
+        SDK_DIR=/home/runner/.buildozer/android/platform/android-sdk
+        mkdir -p $SDK_DIR
+        # 下载旧版 SDK tools（原生就有 tools/bin/sdkmanager）
+        wget -q https://dl.google.com/android/repository/tools_r25.2.3-linux.zip -O /tmp/sdk-tools.zip
+        unzip -q /tmp/sdk-tools.zip -d $SDK_DIR
+        # 预创建 licenses
+        mkdir -p $SDK_DIR/licenses
+        printf "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > $SDK_DIR/licenses/android-sdk-license
+        printf "84831b9409646a918e30573bab4c9c91346d8abd\n" > $SDK_DIR/licenses/android-sdk-preview-license
+        # 验证 sdkmanager 存在
+        ls -la $SDK_DIR/tools/bin/sdkmanager
+        $SDK_DIR/tools/bin/sdkmanager --version || true
+        echo "SDK installed at $SDK_DIR"
+        ls -la $SDK_DIR/
+    
+    - name: Cache Buildozer
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.buildozer
+          .buildozer
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+    
+    - name: Build APK
+      run: |
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+        export PATH=$JAVA_HOME/bin:$PATH
+        export ANDROID_HOME=/home/runner/.buildozer/android/platform/android-sdk
+        export ANDROID_SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk
+        script -q -c "buildozer android debug" /dev/null 2>&1 | tee buildozer.log
+      timeout-minutes: 60
     
     - name: Upload build log
       uses: actions/upload-artifact@v4
