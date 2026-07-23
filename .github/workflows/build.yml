@@ -32,20 +32,29 @@ jobs:
           openjdk-17-jdk unzip wget
         sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
     
-    - name: Pre-create buildozer SDK license files
+    - name: Pre-download Android SDK with licenses accepted
       run: |
-        # buildozer 会把 SDK 下载到这里，预先创建许可证文件
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+        export PATH=$JAVA_HOME/bin:$PATH
+        # buildozer 会把 SDK 下载到这里
         SDK_DIR=~/.buildozer/android/platform/android-sdk
+        mkdir -p $SDK_DIR
+        # 下载旧版 SDK tools（buildozer 期望的 tools/bin/sdkmanager 结构）
+        wget -q https://dl.google.com/android/repository/tools_r25.2.3-linux.zip -O /tmp/sdk-tools.zip
+        unzip -q /tmp/sdk-tools.zip -d $SDK_DIR
+        # 预先创建许可证文件
         mkdir -p $SDK_DIR/licenses
-        # 写入所有已知许可证哈希（覆盖 build-tools 37 所需）
         printf "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > $SDK_DIR/licenses/android-sdk-license
         printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n" > $SDK_DIR/licenses/android-sdk-preview-license
-        printf "\nd975f751698a77e662f1cd35d4b8b2c2e4f5c4ee\n" > $SDK_DIR/licenses/android-sdk-arm-dbt-license
-        printf "\ne9acab5b5fbb560a72cfaecce894681a9cf877e5\n" > $SDK_DIR/licenses/intel-android-extra-license
-        printf "\n33b6a2b64607f11b759f320ef9dff4ae5c47d97a\n" > $SDK_DIR/licenses/google-gdk-license
-        printf "\n7c99a4b6d3e7a3b6c4e3d2c5b8a0e1f3d4c5b6a7\n" > $SDK_DIR/licenses/mips-android-sysimage-license
-        echo "License files created:"
-        ls -la $SDK_DIR/licenses/
+        # 验证 sdkmanager 可用
+        echo "sdkmanager path:"
+        ls -la $SDK_DIR/tools/bin/sdkmanager
+        # 接受所有许可证
+        yes | $SDK_DIR/tools/bin/sdkmanager --licenses > /dev/null || true
+        # 预装 build-tools、platform-tools、platforms
+        $SDK_DIR/tools/bin/sdkmanager "build-tools;34.0.0" "platform-tools" "platforms;android-33"
+        echo "SDK setup done. Contents:"
+        ls -la $SDK_DIR/
     
     - name: Cache Buildozer
       uses: actions/cache@v4
