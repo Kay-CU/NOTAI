@@ -5,9 +5,6 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-env:
-  JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,69 +13,27 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
     
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    - name: Build APK with Buildozer
+      uses: mvidner/kivy-buildozer-action@master
       with:
-        python-version: '3.11'
+        command: buildozer android debug
+        buildozer-version: 1.5.0
     
-    - name: Install dependencies
+    - name: Find APK
+      id: find_apk
       run: |
-        pip install buildozer cython==0.29.36
-        sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends \
-          autoconf libtool pkg-config \
-          libncurses-dev \
-          cmake libffi-dev libssl-dev \
-          openjdk-17-jdk unzip wget expect
-        sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
-    
-    - name: Cache Buildozer
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.buildozer
-          .buildozer
-        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-        restore-keys: |
-          ${{ runner.os }}-buildozer-
-    
-    - name: Pre-create SDK structure with licenses
-      run: |
-        # buildozer 期望的 SDK 路径
-        SDK_DIR=/home/runner/.buildozer/android/platform/android-sdk
-        # 创建 tools 目录结构
-        mkdir -p $SDK_DIR/tools/bin
-        # 创建 licenses 目录和许可证文件
-        mkdir -p $SDK_DIR/licenses
-        printf "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > $SDK_DIR/licenses/android-sdk-license
-        printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n" > $SDK_DIR/licenses/android-sdk-preview-license
-        echo "SDK structure pre-created at $SDK_DIR"
-        ls -la $SDK_DIR/
-        ls -la $SDK_DIR/licenses/
-    
-    - name: Build APK
-      run: |
-        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-        export PATH=$JAVA_HOME/bin:$PATH
-        buildozer android debug
-      timeout-minutes: 45
-    
-    - name: Debug - list build output
-      run: |
-        echo "=== Listing bin directory ==="
-        ls -la bin/ 2>/dev/null || echo "bin directory not found"
-        echo "=== Listing .buildozer directory ==="
-        find .buildozer -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
-        echo "=== Current directory ==="
-        pwd
-        echo "=== All files ==="
-        ls -la
+        echo "=== bin directory ==="
+        ls -la bin/ 2>/dev/null || echo "no bin"
+        echo "=== .buildozer android app ==="
+        ls -la .buildozer/android/app/ 2>/dev/null || echo "no app dir"
+        echo "=== Find all APKs ==="
+        find . -name "*.apk" -type f 2>/dev/null
+        APK_PATH=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
+        echo "APK_PATH=$APK_PATH" >> $GITHUB_OUTPUT
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: NOTAI-apk
-        path: |
-          bin/*.apk
-          .buildozer/**/*.apk
+        path: ${{ steps.find_apk.outputs.APK_PATH }}
         retention-days: 30
