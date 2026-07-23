@@ -83,8 +83,16 @@ jobs:
         export PATH=$JAVA_HOME/bin:$PATH
         export ANDROID_HOME=/home/runner/.buildozer/android/platform/android-sdk
         export ANDROID_SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk
-        buildozer android debug
+        buildozer android debug 2>&1 | tee buildozer.log
       timeout-minutes: 60
+    
+    - name: Upload build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: buildozer-log
+        path: buildozer.log
+        retention-days: 5
     
     - name: Find APK
       id: find_apk
