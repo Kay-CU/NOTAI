@@ -29,23 +29,31 @@ jobs:
           openjdk-17-jdk unzip wget
         sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
     
-    - name: Pre-install old Android SDK tools
+    - name: Pre-install Android SDK (Java 17 compatible)
       run: |
-        # buildozer 只认旧版 tools_r25.2.3 的结构（tools/bin/sdkmanager）
+        # 新版 commandline-tools 支持 Java 17
+        # buildozer 只认 tools/bin/sdkmanager，所以解压后重命名为 tools
         SDK_DIR=/home/runner/.buildozer/android/platform/android-sdk
         mkdir -p $SDK_DIR
-        # 下载旧版 SDK tools（原生就有 tools/bin/sdkmanager）
-        wget -q https://dl.google.com/android/repository/tools_r25.2.3-linux.zip -O /tmp/sdk-tools.zip
-        unzip -q /tmp/sdk-tools.zip -d $SDK_DIR
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
+        unzip -q /tmp/cmdline-tools.zip -d /tmp/
+        mv /tmp/cmdline-tools $SDK_DIR/tools
         # 预创建 licenses
         mkdir -p $SDK_DIR/licenses
         printf "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > $SDK_DIR/licenses/android-sdk-license
         printf "84831b9409646a918e30573bab4c9c91346d8abd\n" > $SDK_DIR/licenses/android-sdk-preview-license
-        # 验证 sdkmanager 存在
+        # 预装 build-tools 和 platform-tools，避免 buildozer 运行时安装卡住
+        export ANDROID_HOME=$SDK_DIR
+        export ANDROID_SDK_ROOT=$SDK_DIR
+        yes | $SDK_DIR/tools/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+        $SDK_DIR/tools/bin/sdkmanager "build-tools;34.0.0" "platform-tools" "platforms;android-33" > /tmp/sdk_install.log 2>&1 || true
+        echo "=== sdkmanager install log ==="
+        tail -20 /tmp/sdk_install.log || true
+        # 验证
         ls -la $SDK_DIR/tools/bin/sdkmanager
-        $SDK_DIR/tools/bin/sdkmanager --version || true
+        $SDK_DIR/tools/bin/sdkmanager --version
         echo "SDK installed at $SDK_DIR"
-        ls -la $SDK_DIR/
+        ls -la $SDK_DIR/build-tools/ 2>/dev/null || true
     
     - name: Cache Buildozer
       uses: actions/cache@v4
