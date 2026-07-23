@@ -23,7 +23,8 @@ jobs:
         pip install buildozer==1.5.0 cython==0.29.36
         sudo apt-get update -qq
         sudo apt-get install -y --no-install-recommends \
-          autoconf libtool pkg-config \
+          autoconf automake libtool libltdl-dev \
+          pkg-config \
           libncurses-dev \
           cmake libffi-dev libssl-dev \
           openjdk-17-jdk unzip wget
