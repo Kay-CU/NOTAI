@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,23 +16,90 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
     
-    - name: Build APK with Buildozer
-      uses: mvidner/kivy-buildozer-action@master
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        command: buildozer android debug
-        buildozer-version: 1.5.0
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install buildozer==1.5.0 cython==0.29.36
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends \
+          autoconf libtool pkg-config \
+          libncurses-dev \
+          cmake libffi-dev libssl-dev \
+          openjdk-17-jdk unzip wget
+        sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
+    
+    - name: Cache Buildozer
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.buildozer
+          .buildozer
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+    
+    - name: Pre-install Android SDK manually
+      run: |
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+        export PATH=$JAVA_HOME/bin:$PATH
+        # buildozer 期望的 SDK 路径
+        SDK_DIR=/home/runner/.buildozer/android/platform/android-sdk
+        mkdir -p $SDK_DIR/cmdline-tools
+        # 下载 commandline tools
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
+        unzip -q /tmp/cmdline-tools.zip -d $SDK_DIR/cmdline-tools
+        mv $SDK_DIR/cmdline-tools/cmdline-tools $SDK_DIR/cmdline-tools/latest
+        # 预创建 licenses 目录和文件
+        mkdir -p $SDK_DIR/licenses
+        printf "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > $SDK_DIR/licenses/android-sdk-license
+        printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n" > $SDK_DIR/licenses/android-sdk-preview-license
+        # 使用 yes 自动接受许可证并安装
+        export ANDROID_HOME=$SDK_DIR
+        export ANDROID_SDK_ROOT=$SDK_DIR
+        yes | $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
+        $SDK_DIR/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platform-tools" "platforms;android-33" > /tmp/sdkmanager.log 2>&1
+        echo "=== sdkmanager log ==="
+        tail -30 /tmp/sdkmanager.log
+        echo "=== SDK contents ==="
+        ls -la $SDK_DIR/
+        ls -la $SDK_DIR/build-tools/ 2>/dev/null || echo "no build-tools"
+        # 验证 sdkmanager 可用
+        $SDK_DIR/cmdline-tools/latest/bin/sdkmanager --version
+        # 创建 tools/bin/sdkmanager 符号链接，buildozer 期望的路径
+        mkdir -p $SDK_DIR/tools/bin
+        ln -sf $SDK_DIR/cmdline-tools/latest/bin/sdkmanager $SDK_DIR/tools/bin/sdkmanager
+        ln -sf $SDK_DIR/cmdline-tools/latest/bin/avdmanager $SDK_DIR/tools/bin/avdmanager 2>/dev/null || true
+        echo "=== After symlink ==="
+        ls -la $SDK_DIR/tools/bin/
+        $SDK_DIR/tools/bin/sdkmanager --version
+    
+    - name: Build APK
+      run: |
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+        export PATH=$JAVA_HOME/bin:$PATH
+        export ANDROID_HOME=/home/runner/.buildozer/android/platform/android-sdk
+        export ANDROID_SDK_ROOT=/home/runner/.buildozer/android/platform/android-sdk
+        buildozer android debug
+      timeout-minutes: 60
     
     - name: Find APK
       id: find_apk
       run: |
         echo "=== bin directory ==="
         ls -la bin/ 2>/dev/null || echo "no bin"
-        echo "=== .buildozer android app ==="
-        ls -la .buildozer/android/app/ 2>/dev/null || echo "no app dir"
         echo "=== Find all APKs ==="
         find . -name "*.apk" -type f 2>/dev/null
         APK_PATH=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
+        if [ -z "$APK_PATH" ]; then
+          echo "ERROR: No APK found"
+          exit 1
+        fi
         echo "APK_PATH=$APK_PATH" >> $GITHUB_OUTPUT
+        echo "Found APK at: $APK_PATH"
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
