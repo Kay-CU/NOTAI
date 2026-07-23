@@ -5,6 +5,11 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+  ANDROID_HOME: /opt/android-sdk
+  ANDROID_SDK_ROOT: /opt/android-sdk
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,10 +31,21 @@ jobs:
           autoconf libtool pkg-config \
           libncurses-dev \
           cmake libffi-dev libssl-dev \
-          openjdk-17-jdk
+          openjdk-17-jdk unzip wget
         sudo update-alternatives --set java /usr/lib/jvm/java-17-openjdk-amd64/bin/java
-        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-        export PATH=$JAVA_HOME/bin:$PATH
+        echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
+        echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+    
+    - name: Pre-install Android SDK and accept licenses
+      run: |
+        mkdir -p $ANDROID_HOME/cmdline-tools
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
+        unzip -q /tmp/cmdline-tools.zip -d $ANDROID_HOME/cmdline-tools
+        mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+        # 接受所有 SDK 许可证
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
+        # 预装 build-tools 和 platform-tools
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platform-tools" "platforms;android-33"
     
     - name: Cache Buildozer
       uses: actions/cache@v4
@@ -43,8 +59,6 @@ jobs:
     
     - name: Build APK
       run: |
-        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-        export PATH=$JAVA_HOME/bin:$PATH
         buildozer android debug
     
     - name: Upload APK
